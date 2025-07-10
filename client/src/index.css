@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: Smooth fonts + body reset */
+body {
+  @apply bg-gray-950 text-white antialiased;
+}
