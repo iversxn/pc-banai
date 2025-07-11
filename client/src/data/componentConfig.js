@@ -1,48 +1,35 @@
 export const RETAILERS = {
-  techland: {
-    name: 'TechlandBD',
-    productSelector: '.product-layout',
-    nameSelector: '.name a',
-    priceSelector: '.price-new, .price-normal, .price',
-    stockSelector: '.stock span',
-    urlBase: 'https://www.techlandbd.com',
-  },
-  startech: {
-    name: 'StarTech',
-    productSelector: '.p-item',
-    nameSelector: '.p-item-name a',
-    priceSelector: '.p-item-price span',
-    stockSelector: '.p-stock',
-    urlBase: 'https://www.startech.com.bd',
-  },
-  skyland: {
-    name: 'Skyland',
-    productSelector: '.product-thumb',
-    nameSelector: '.caption h4 a',
-    priceSelector: '.price .price-new, .price',
-    stockSelector: 'p.stock',
-    urlBase: 'https://www.skyland.com.bd',
-  },
-  ultratech: {
-    name: 'Ultratech',
-    productSelector: '.product-thumb',
-    nameSelector: '.caption h4 a',
-    priceSelector: '.price-new, .price',
-    stockSelector: '.stock-status',
-    urlBase: 'https://www.ultratech.com.bd',
-  },
+  techland: { name: 'TechlandBD', urlBase: 'https://www.techlandbd.com' },
+  startech: { name: 'StarTech', urlBase: 'https://www.startech.com.bd' },
+  skyland: { name: 'Skyland', urlBase: 'https://www.skyland.com.bd' },
+  ultratech: { name: 'Ultratech', urlBase: 'https://www.ultratech.com.bd' },
 };
 
 export const CATEGORIES = {
   CPU: {
     displayName: 'CPU',
-    // This category now uses the static DB, so URLs are for fallback/search
     urls: {
       techland: '/pc-components/processor',
       startech: '/component/processor',
       skyland: '/components/processor',
       ultratech: '/processor',
     },
+    // New guided flow configuration
+    brands: {
+      AMD: {
+        series: [
+          { name: 'Ryzen 7000 Series (AM5)', socket: 'AM5', memoryType: 'DDR5', keywords: ['7950x', '7900x', '7700x', '7600x', '7500f'] },
+          { name: 'Ryzen 5000 Series (AM4)', socket: 'AM4', memoryType: 'DDR4', keywords: ['5950x', '5900x', '5800x', '5700x', '5600x', '5600', '5500'] },
+        ]
+      },
+      Intel: {
+        series: [
+          { name: '14th Gen Core Series (LGA1700)', socket: 'LGA1700', memoryType: ['DDR4', 'DDR5'], keywords: ['14900', '14700', '14600', '14400'] },
+          { name: '13th Gen Core Series (LGA1700)', socket: 'LGA1700', memoryType: ['DDR4', 'DDR5'], keywords: ['13900', '13700', '13600', '13400', '13100'] },
+          { name: '12th Gen Core Series (LGA1700)', socket: 'LGA1700', memoryType: ['DDR4', 'DDR5'], keywords: ['12900', '12700', '12600', '12400', '12100'] },
+        ]
+      }
+    }
   },
   Motherboard: {
     displayName: 'Motherboard',
@@ -73,19 +60,15 @@ export const CATEGORIES = {
   },
   Storage: {
     displayName: 'Storage',
-    // BUG FIX: Ultratech has separate pages for SSD and HDD. We need to scrape both.
-    // For simplicity in this example, we will point to a general page.
-    // A more advanced scraper could handle multiple URLs per category.
     urls: {
       techland: '/pc-components/storage',
       startech: '/component/storage',
       skyland: '/components/storage',
-      ultratech: '/ssd-drive', // Corrected to a valid page.
+      ultratech: '/ssd-drive',
     },
   },
   PSU: {
     displayName: 'Power Supply',
-    // BUG FIX: Corrected StarTech URL from 'power-supply-unit' to 'power-supply'
     urls: {
       techland: '/pc-components/power-supply',
       startech: '/component/power-supply',
