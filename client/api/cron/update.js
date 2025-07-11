@@ -1,123 +1,95 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { RETAILERS, CATEGORIES } from '../../src/data/componentConfig.js';
+import { setCache, setUpdating } from '../utils/cache.js';
 
-const headers = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
-  Accept: 'text/html,application/xhtml+xml',
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Accept-Language': 'en-US,en;q=0.9',
 };
 
-async function scrapeTechland() {
-  try {
-    const { data } = await axios.get('https://www.techlandbd.com/pc-components/processor', { headers, timeout: 10000 });
-    const $ = cheerio.load(data);
-    const products = [];
+// Generic scraper function
+async function scrapeRetailerCategory(retailerKey, categoryKey) {
+  const retailer = RETAILERS[retailerKey];
+  const category = CATEGORIES[categoryKey];
+  const urlPath = category.urls[retailerKey];
 
-    $('.product-thumb').each((_, el) => {
-      const name = $(el).find('.caption h4 a').text().trim();
-      const priceText = $(el).find('.price-new, .price').first().text().trim().replace(/[^\d]/g, '');
-      const price = parseInt(priceText, 10) || null;
-      const url = $(el).find('.caption h4 a').attr('href');
-      const stock = $(el).find('.stock span').text().trim() || 'Unknown';
-      if (name && price && url) {
-        products.push({ name, price, stock, url });
+  if (!urlPath) return [];
+
+  const url = `${retailer.urlBase}${urlPath}`;
+  const products = [];
+
+  try {
+    const { data } = await axios.get(url, { headers: HEADERS, timeout: 20000 });
+    const $ = cheerio.load(data);
+
+    $(retailer.productSelector).each((_, el) => {
+      const name = $(el).find(retailer.nameSelector).text().trim();
+      let priceText = $(el).find(retailer.priceSelector).first().text().trim();
+      let stockText = $(el).find(retailer.stockSelector).text().trim() || 'In Stock';
+      let productUrl = $(el).find(retailer.nameSelector).attr('href');
+
+      if (name && productUrl) {
+        const price = parseInt(priceText.replace(/[^0-9]/g, ''), 10) || 0;
+        
+        // Skip if price is 0
+        if (price === 0) return;
+
+        if (!productUrl.startsWith('http')) {
+          productUrl = new URL(productUrl, retailer.urlBase).href;
+        }
+
+        const stock = /out of stock/i.test(stockText) ? 'Out of Stock' : 'In Stock';
+
+        products.push({
+          name,
+          price,
+          stock,
+          url: productUrl,
+          vendor: retailer.name,
+          category: categoryKey,
+        });
       }
     });
-
-    return products;
+    console.log(`[${retailer.name}] Scraped ${products.length} items from ${categoryKey}`);
   } catch (err) {
-    console.error('Techland scrape error:', err.message);
-    return [];
+    console.error(`Error scraping ${url}: ${err.message}`);
   }
+  return products;
 }
 
-async function scrapeStarTech() {
-  try {
-    const { data } = await axios.get('https://www.startech.com.bd/component/processor', { headers, timeout: 10000 });
-    const $ = cheerio.load(data);
-    const products = [];
+export async function scrapeAll() {
+    console.log('Starting full scrape process...');
+    setUpdating(true);
+    let allProducts = [];
 
-    $('.p-item').each((_, el) => {
-      const name = $(el).find('.p-item-name a').text().trim();
-      const priceText = $(el).find('.p-item-price span').text().trim().replace(/[^\d]/g, '');
-      const price = parseInt(priceText, 10) || null;
-      const url = $(el).find('.p-item-name a').attr('href');
-      const stock = $(el).find('.p-stock').text().trim() || 'Unknown';
-      if (name && price && url) {
-        products.push({ name, price, stock, url: `https://www.startech.com.bd${url}` });
-      }
+    for (const categoryKey of Object.keys(CATEGORIES)) {
+        const categoryScrapers = Object.keys(RETAILERS).map(retailerKey =>
+            scrapeRetailerCategory(retailerKey, categoryKey)
+        );
+        const results = await Promise.all(categoryScrapers);
+        results.forEach(result => allProducts.push(...result));
+    }
+    
+    // Normalize names (basic example)
+    allProducts.forEach(p => {
+        p.normalizedName = p.name.toLowerCase().replace(/\s+/g, ' ').trim();
     });
 
-    return products;
-  } catch (err) {
-    console.error('StarTech scrape error:', err.message);
-    return [];
-  }
+    setCache(allProducts);
+    console.log(`Scraping complete. Total products found: ${allProducts.length}`);
+    return allProducts;
 }
 
-async function scrapeSkyland() {
-  try {
-    const { data } = await axios.get('https://www.skyland.com.bd/components/processor', { headers, timeout: 10000 });
-    const $ = cheerio.load(data);
-    const products = [];
-
-    $('.product-layout').each((_, el) => {
-      const name = $(el).find('.caption a').text().trim();
-      const priceText = $(el).find('.price').first().text().trim().replace(/[^\d]/g, '');
-      const price = parseInt(priceText, 10) || null;
-      const url = $(el).find('.caption a').attr('href');
-      const stock = 'Unknown';
-      if (name && price && url) {
-        products.push({ name, price, stock, url });
-      }
-    });
-
-    return products;
-  } catch (err) {
-    console.error('Skyland scrape error:', err.message);
-    return [];
-  }
-}
-
-async function scrapeUltratech() {
-  try {
-    const { data } = await axios.get('https://www.ultratech.com.bd/processor', { headers, timeout: 10000 });
-    const $ = cheerio.load(data);
-    const products = [];
-
-    $('.product-thumb').each((_, el) => {
-      const name = $(el).find('.caption a').text().trim();
-      const priceText = $(el).find('.price').text().trim().replace(/[^\d]/g, '');
-      const price = parseInt(priceText, 10) || null;
-      const url = $(el).find('.caption a').attr('href');
-      const stock = 'Unknown';
-      if (name && price && url) {
-        products.push({ name, price, stock, url });
-      }
-    });
-
-    return products;
-  } catch (err) {
-    console.error('Ultratech scrape error:', err.message);
-    return [];
-  }
-}
-
+// Vercel Cron Job handler
 export default async function handler(req, res) {
   try {
-    const [techland, startech, skyland, ultratech] = await Promise.all([
-      scrapeTechland(),
-      scrapeStarTech(),
-      scrapeSkyland(),
-      scrapeUltratech(),
-    ]);
-
-    res.status(200).json({
-      success: true,
-      message: 'Live retailer data scraped successfully.',
-      data: { techland, startech, skyland, ultratech },
-    });
-  } catch (err) {
-    console.error('Scraping failed:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    await scrapeAll();
+    res.status(200).json({ success: true, message: 'Scrape job completed.' });
+  } catch (error) {
+    console.error('Cron handler failed:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }
