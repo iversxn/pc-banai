@@ -1,63 +1,89 @@
-// client/src/components/PartsTable.jsx
 import React from 'react';
+import { CATEGORIES } from '../data/componentConfig';
 
-export default function PartsTable({ category, parts, selectedParts, onSelect, onRemove }) {
+export default function PartsTable({ categories, selectedParts, onOpenPicker, onRemove }) {
+  const multiSelectCategories = ['RAM', 'Storage'];
+
   return (
-    <div className="mb-10">
-      <h2 className="text-2xl font-semibold text-white mb-3">{category}</h2>
-      <table className="w-full table-auto border-collapse border border-gray-700 text-white">
+    <div className="bg-gray-900/50 p-4 rounded-lg">
+      <table className="w-full text-left text-white">
         <thead>
-          <tr className="bg-gray-900">
-            <th className="border border-gray-700 px-4 py-2 text-left">Component</th>
-            <th className="border border-gray-700 px-4 py-2">Selection</th>
-            <th className="border border-gray-700 px-4 py-2">Base Price</th>
-            <th className="border border-gray-700 px-4 py-2">Promo</th>
-            <th className="border border-gray-700 px-4 py-2">Shipping</th>
-            <th className="border border-gray-700 px-4 py-2">Tax</th>
-            <th className="border border-gray-700 px-4 py-2">Availability</th>
-            <th className="border border-gray-700 px-4 py-2">Price</th>
-            <th className="border border-gray-700 px-4 py-2">Where</th>
-            <th className="border border-gray-700 px-4 py-2">Actions</th>
+          <tr className="border-b border-gray-600">
+            <th className="p-3">Component</th>
+            <th className="p-3">Selection</th>
+            <th className="p-3">Vendor</th>
+            <th className="p-3">Price</th>
+            <th className="p-3">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {selectedParts.length === 0 ? (
-            <tr>
-              <td colSpan={10} className="text-center p-4 border border-gray-700">
-                <button
-                  className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-white"
-                  onClick={() => onSelect(null)}
-                >
-                  Choose a {category}
-                </button>
-              </td>
-            </tr>
-          ) : (
-            selectedParts.map((part, idx) => (
-              <tr key={idx} className="hover:bg-gray-800">
-                <td className="border border-gray-700 px-4 py-2">{part.name}</td>
-                <td className="border border-gray-700 px-4 py-2">{part.selection || '-'}</td>
-                <td className="border border-gray-700 px-4 py-2">৳{part.basePrice?.toLocaleString() || '-'}</td>
-                <td className="border border-gray-700 px-4 py-2">{part.promo || '-'}</td>
-                <td className="border border-gray-700 px-4 py-2">{part.shipping || '-'}</td>
-                <td className="border border-gray-700 px-4 py-2">{part.tax || '-'}</td>
-                <td className="border border-gray-700 px-4 py-2">{part.availability || '-'}</td>
-                <td className="border border-gray-700 px-4 py-2 font-bold">৳{part.price?.toLocaleString() || '-'}</td>
-                <td className="border border-gray-700 px-4 py-2">{part.vendor || '-'}</td>
-                <td className="border border-gray-700 px-4 py-2">
-                  <button
-                    className="text-red-500 hover:underline"
-                    onClick={() => onRemove(idx)}
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))
-          )}
+          {categories.map((cat) => {
+            const isMulti = multiSelectCategories.includes(cat);
+            const partOrParts = selectedParts[cat];
+
+            if (isMulti) {
+              const parts = Array.isArray(partOrParts) ? partOrParts : [];
+              return (
+                <React.Fragment key={cat}>
+                  {parts.map((part, idx) => (
+                    <tr key={`${cat}-${idx}`} className="border-b border-gray-800 hover:bg-gray-800">
+                      <td className="p-3">{idx === 0 ? CATEGORIES[cat].displayName : ''}</td>
+                      <td className="p-3">{part.name}</td>
+                      <td className="p-3">{part.vendor}</td>
+                      <td className="p-3 text-green-400">৳{part.price.toLocaleString()}</td>
+                      <td className="p-3">
+                        <button onClick={() => onRemove(cat, idx)} className="text-red-500 hover:underline">Remove</button>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-b border-gray-800">
+                     <td className="p-3 font-semibold">{parts.length === 0 ? CATEGORIES[cat].displayName: ''}</td>
+                     <td colSpan="4" className={parts.length > 0 ? "text-right p-3": "p-3"}>
+                        <button onClick={() => onOpenPicker(cat)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">+ Add {CATEGORIES[cat].displayName}</button>
+                     </td>
+                  </tr>
+                </React.Fragment>
+              );
+            } else {
+              const part = partOrParts;
+              return (
+                <tr key={cat} className="border-b border-gray-800 hover:bg-gray-800">
+                  <td className="p-3 font-semibold">{CATEGORIES[cat].displayName}</td>
+                  {part ? (
+                    <>
+                      <td className="p-3">{part.name}</td>
+                      <td className="p-3">{part.vendor}</td>
+                      <td className="p-3 text-green-400">৳{part.price.toLocaleString()}</td>
+                      <td className="p-3">
+                        <button onClick={() => onOpenPicker(cat)} className="text-yellow-400 hover:underline mr-4">Change</button>
+                        <button onClick={() => onRemove(cat)} className="text-red-500 hover:underline">Remove</button>
+                      </td>
+                    </>
+                  ) : (
+                    <td colSpan="4" className="p-3">
+                      <button onClick={() => onOpenPicker(cat)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Choose {CATEGORIES[cat].displayName}</button>
+                    </td>
+                  )}
+                </tr>
+              );
+            }
+          })}
         </tbody>
       </table>
     </div>
   );
-}
+}```
 
+**File: `client/src/components/CompatibilityAlert.jsx` (MODIFIED)**
+```javascript
+import React from 'react';
+
+export default function CompatibilityAlert({ message }) {
+  if (!message) return null;
+
+  return (
+    <div className="text-yellow-300 text-sm p-1">
+      {message}
+    </div>
+  );
+}
