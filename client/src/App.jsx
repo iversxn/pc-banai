@@ -37,7 +37,16 @@ export default function App() {
         [category]: [...(prev[category] || []), part],
       }));
     } else {
-      setSelectedParts((prev) => ({ ...prev, [category]: part }));
+      // When changing a core component, clear dependent parts to avoid incompatibility
+      if (category === 'CPU') {
+          const { Motherboard, RAM, ...rest } = selectedParts;
+          setSelectedParts({ ...rest, [category]: part });
+      } else if (category === 'Motherboard') {
+          const { RAM, ...rest } = selectedParts;
+          setSelectedParts({ ...rest, [category]: part });
+      } else {
+          setSelectedParts((prev) => ({ ...prev, [category]: part }));
+      }
     }
     setIsPickerOpen(false);
   };
@@ -57,7 +66,8 @@ export default function App() {
   const content = (
     <div className="space-y-4">
       {compatibilityIssues.length > 0 && (
-          <div className="p-4 bg-red-900/50 border border-red-700 rounded-lg">
+          <div className="p-4 bg-yellow-900/50 border border-yellow-700 rounded-lg">
+              <h3 className="font-bold text-yellow-300 mb-2">Compatibility Warnings</h3>
               {compatibilityIssues.map((msg, i) => <CompatibilityAlert key={i} message={msg} />)}
           </div>
       )}
@@ -94,6 +104,7 @@ export default function App() {
       {isPickerOpen && (
         <PartPicker
           category={pickerCategory}
+          selectedParts={selectedParts} // Pass selected parts for filtering
           onClose={() => setIsPickerOpen(false)}
           onSelectPart={handlePartSelect}
         />
