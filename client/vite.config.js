@@ -9,11 +9,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@components': path.resolve(__dirname, './src/components'),
       '@data': path.resolve(__dirname, './src/data'),
-      '@utils': path.resolve(__dirname, './src/utils')
+      '@utils': path.resolve(__dirname, './src/utils'),
+      // Add alias for API to prevent accidental client-side imports
+      '@api': path.resolve(__dirname, './api'),
     }
   },
   build: {
-    outDir: 'client/dist', // <--- This should be 'dist'
-    emptyOutDir: true    // Clears build directory before new build
+    outDir: 'dist', // Keep it simple, builds into client/dist
+    emptyOutDir: true
   }
 });
