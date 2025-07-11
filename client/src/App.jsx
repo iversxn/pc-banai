@@ -1,124 +1,97 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Layout from './components/Layout';
-import Sidebar from './components/Sidebar';
-import ResponsiveGrid from './components/ResponsiveGrid';
-import PartRow from './components/PartRow';
-import MultiplePartRow from './components/MultiplePartRow';
+import PartsTable from './components/PartsTable'; // Using PartsTable for a more detailed view
 import TotalSummary from './components/TotalSummary';
 import CompatibilityAlert from './components/CompatibilityAlert';
-import RetailerData from './components/RetailerData';
-import { getDefaultPartForCategory } from './utils/getDefaultPart';
+import { checkCompatibility } from './utils/checkCompatibility';
+import { CATEGORIES } from './data/componentConfig';
+import PartPicker from './components/PartPicker';
 
-const allCategories = [
-  'CPU',
-  'Motherboard',
-  'GPU',
-  'RAM',
-  'Storage',
-  'PSU',
-  'Case',
-  'CPU Cooler',
-  'Case Fan',
-  'Monitor',
-];
-
+const allCategoryKeys = Object.keys(CATEGORIES);
 const multiSelectCategories = ['RAM', 'Storage', 'Case Fan', 'Monitor'];
 
 export default function App() {
+  const [allParts, setAllParts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedParts, setSelectedParts] = useState({});
-  const [activeCategory, setActiveCategory] = useState(null);
-  const [incompatibilityMessage, setIncompatibilityMessage] = useState('');
+  const [compatibilityIssues, setCompatibilityIssues] = useState([]);
+  
+  // Part Picker Modal State
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [pickerCategory, setPickerCategory] = useState(null);
 
-  const handlePartSelect = (category, part) => {
-    if (!part) return;
+  useEffect(() => {
+    const fetchParts = async () => {
+      try {
+        const res = await fetch('/api/retailers');
+        if (!res.ok) {
+          throw new Error(`API Error: ${res.statusText}`);
+        }
+        const json = await res.json();
+        if (json.success) {
+          setAllParts(json.data);
+        } else {
+           setError(json.message || 'Failed to fetch parts.');
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchParts();
+  }, []);
+  
+  useEffect(() => {
+    const issues = checkCompatibility(selectedParts);
+    setCompatibilityIssues(issues);
+  }, [selectedParts]);
 
+  const handleOpenPicker = (category) => {
+    setPickerCategory(category);
+    setIsPickerOpen(true);
+  };
+
+  const handlePartSelect = (part) => {
+    const { category } = part;
     if (multiSelectCategories.includes(category)) {
       setSelectedParts((prev) => ({
         ...prev,
         [category]: [...(prev[category] || []), part],
       }));
     } else {
-      setSelectedParts((prev) => ({
-        ...prev,
-        [category]: part,
-      }));
+      setSelectedParts((prev) => ({ ...prev, [category]: part }));
     }
-
-    // Compatibility logic
-    if (
-      category === 'CPU' &&
-      selectedParts['Motherboard'] &&
-      part.brand !== selectedParts['Motherboard'].brand
-    ) {
-      setIncompatibilityMessage('⚠️ CPU and Motherboard brands do not match!');
-    } else {
-      setIncompatibilityMessage('');
-    }
+    setIsPickerOpen(false); // Close picker after selection
   };
 
-  const handlePartRemove = (category, index) => {
-    if (multiSelectCategories.includes(category)) {
-      setSelectedParts((prev) => ({
-        ...prev,
-        [category]: prev[category].filter((_, i) => i !== index),
-      }));
-    } else {
-      const updated = { ...selectedParts };
-      delete updated[category];
-      setSelectedParts(updated);
-    }
+  const handlePartRemove = (category, index = -1) => {
+    setSelectedParts((prev) => {
+      const updated = { ...prev };
+      if (multiSelectCategories.includes(category) && index > -1) {
+        updated[category] = updated[category].filter((_, i) => i !== index);
+      } else {
+        delete updated[category];
+      }
+      return updated;
+    });
   };
-
-  const sidebar = (
-    <Sidebar
-      categories={allCategories}
-      selectedParts={selectedParts}
-      onSelect={setActiveCategory}
-    />
-  );
-
+  
   const content = (
-    <div className="space-y-6">
-      {/* 🔍 Live Retailer Data */}
-      <section>
-        <h2 className="text-xl font-semibold text-green-700 mb-2">📊 Live Price Comparison</h2>
-        <RetailerData />
-      </section>
-
-      {/* 🧩 PC Builder */}
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold text-gray-800 mb-2">🛠️ Build Your PC</h2>
-        <div className="space-y-4">
-          {allCategories.map((category) => {
-            const parts =
-              selectedParts[category] || (multiSelectCategories.includes(category) ? [] : null);
-
-            return multiSelectCategories.includes(category) ? (
-              <MultiplePartRow
-                key={category}
-                category={category}
-                parts={parts}
-                onAdd={() => {
-                  const part = getDefaultPartForCategory(category);
-                  if (part) handlePartSelect(category, part);
-                }}
-                onRemove={(index) => handlePartRemove(category, index)}
-              />
-            ) : (
-              <PartRow
-                key={category}
-                category={category}
-                part={parts}
-                onSelect={() => {
-                  const part = getDefaultPartForCategory(category);
-                  if (part) handlePartSelect(category, part);
-                }}
-              />
-            );
-          })}
-        </div>
-      </section>
+    <div className="space-y-4">
+      {compatibilityIssues.length > 0 && (
+          <div className="p-4 bg-red-900/50 border border-red-700 rounded-lg">
+              {compatibilityIssues.map((msg, i) => <CompatibilityAlert key={i} message={msg} />)}
+          </div>
+      )}
+      <PartsTable 
+        categories={allCategoryKeys}
+        selectedParts={selectedParts}
+        onOpenPicker={handleOpenPicker}
+        onRemove={handlePartRemove}
+      />
     </div>
   );
 
@@ -128,14 +101,28 @@ export default function App() {
       onCheckout={() => alert('Checkout functionality coming soon!')}
     />
   );
+  
+  if (isLoading) return <div className="text-center p-10">Loading PC Parts...</div>
+  if (error) return <div className="text-center p-10 text-red-400">Error: {error}</div>
 
   return (
     <>
-      <CompatibilityAlert message={incompatibilityMessage} />
       <Layout>
         <Header />
-        <ResponsiveGrid sidebar={sidebar} content={content} summary={summary} />
+        <div className="p-4">
+            {content}
+            {summary}
+        </div>
       </Layout>
+      
+      {isPickerOpen && (
+        <PartPicker
+          category={pickerCategory}
+          allParts={allParts}
+          onClose={() => setIsPickerOpen(false)}
+          onSelectPart={handlePartSelect}
+        />
+      )}
     </>
   );
 }
