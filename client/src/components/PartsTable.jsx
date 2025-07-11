@@ -72,18 +72,4 @@ export default function PartsTable({ categories, selectedParts, onOpenPicker, on
       </table>
     </div>
   );
-}```
-
-**File: `client/src/components/CompatibilityAlert.jsx` (MODIFIED)**
-```javascript
-import React from 'react';
-
-export default function CompatibilityAlert({ message }) {
-  if (!message) return null;
-
-  return (
-    <div className="text-yellow-300 text-sm p-1">
-      {message}
-    </div>
-  );
 }
