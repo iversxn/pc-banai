@@ -1,140 +1,125 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { CATEGORIES } from '../data/componentConfig';
+import { DB } from '../data/productDatabase'; // Import the static DB
 import LoadingSpinner from './LoadingSpinner';
 
-// A simple normalization function to group similar product names
-const normalizeName = (name) => {
-    return name
-        .toLowerCase()
-        .replace(/(ram|gb|ddr4|ddr5|mhz|cl\d+)/g, '') // Remove common specs
-        .replace(/[^a-z0-9]/g, '') // Remove special characters
-        .trim();
-};
+// This component now handles the full logic:
+// 1. Show a filtered list of products from the static DB.
+// 2. On selection, fetch live offers for that specific product.
 
-export default function PartPicker({ category, onClose, onSelectPart }) {
-  const [step, setStep] = useState(1); // 1: Product Selection, 2: Offer Selection
+export default function PartPicker({ category, selectedParts, onClose, onSelectPart }) {
+  const [step, setStep] = useState(1); // 1: Product List, 2: Live Offers
   const [selectedProduct, setSelectedProduct] = useState(null);
   
-  const [parts, setParts] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [liveOffers, setLiveOffers] = useState([]);
+  const [isLoadingOffers, setIsLoadingOffers] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchPartsForCategory = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/retailers?category=${category}`);
-        const json = await res.json();
-        if (!res.ok || !json.success) {
-          throw new Error(json.error || 'Failed to fetch parts.');
-        }
-        setParts(json.data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // Memoized filtering logic
+  const productList = useMemo(() => {
+    let list = DB[category] || [];
+    if (!list.length) return []; // Return empty if no static data for this category
 
-    fetchPartsForCategory();
-  }, [category]);
+    const { CPU, Motherboard } = selectedParts;
 
-  const uniqueProducts = useMemo(() => {
-    const productMap = new Map();
-    parts.forEach(part => {
-      const mainName = part.name.split(' ').slice(0, 5).join(' ');
-      const normalized = normalizeName(mainName);
-
-      if (!productMap.has(normalized)) {
-        productMap.set(normalized, {
-          displayName: part.name,
-          vendors: [],
-        });
-      }
-      productMap.get(normalized).vendors.push(part);
-    });
-
-    productMap.forEach(prod => prod.vendors.sort((a, b) => a.price - b.price));
+    if (category === 'Motherboard' && CPU) {
+      list = list.filter(m => m.socket === CPU.socket);
+    }
     
-    return Array.from(productMap.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
-  }, [parts]);
+    if (category === 'RAM' && (CPU || Motherboard)) {
+        const requiredType = Motherboard?.memoryType || CPU?.memoryType;
+        if (requiredType) {
+            list = list.filter(r => Array.isArray(requiredType) ? requiredType.includes(r.type) : r.type === requiredType);
+        }
+    }
 
-  const handleSelectProduct = (product) => {
+    return list;
+  }, [category, selectedParts]);
+
+  const handleProductSelect = async (product) => {
     setSelectedProduct(product);
     setStep(2);
+    setIsLoadingOffers(true);
+    setError(null);
+    setLiveOffers([]);
+
+    try {
+      const res = await fetch(`/api/retailers?category=${category}&productName=${encodeURIComponent(product.name)}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to fetch offers.');
+      }
+      // Sort offers by price
+      const sortedOffers = json.data.sort((a, b) => a.price - b.price);
+      setLiveOffers(sortedOffers);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoadingOffers(false);
+    }
   };
 
   const handleBack = () => {
-    setSelectedProduct(null);
     setStep(1);
+    setSelectedProduct(null);
+    setLiveOffers([]);
   };
 
-  const renderContent = () => {
-    if (isLoading) {
-      return <div className="min-h-[300px] flex flex-col justify-center items-center"><LoadingSpinner /><p className="mt-4">Fetching parts for {category}...</p></div>;
+  const renderProductSelection = () => {
+    if (!DB[category]) {
+        return <div className="p-4">Live search for this category will be implemented soon.</div>
     }
-    if (error) {
-      return <div className="min-h-[300px] flex justify-center items-center text-red-400"><p>Error: {error}</p></div>;
-    }
-    if (uniqueProducts.length === 0) {
-        return <div className="min-h-[300px] flex justify-center items-center"><p>No products found for this category.</p></div>;
-    }
+    
+    return (
+      <>
+        <h3 className="text-lg font-semibold mb-4">Choose a Product ({productList.length} compatible found)</h3>
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
+          {productList.length > 0 ? productList.map((product, idx) => (
+            <div
+              key={idx}
+              onClick={() => handleProductSelect(product)}
+              className="p-3 bg-gray-700 rounded-md hover:bg-blue-600 cursor-pointer transition"
+            >
+              <p className="font-semibold">{product.name}</p>
+            </div>
+          )) : <p className="text-yellow-400">No compatible products found. Try changing your selected CPU or Motherboard.</p>}
+        </div>
+      </>
+    );
+  };
 
-    if (step === 1) {
-      return (
-        <>
-          <h3 className="text-lg font-semibold mb-4">Choose a Product ({uniqueProducts.length} found)</h3>
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
-            {uniqueProducts.map((product, idx) => (
-              <div
-                key={idx}
-                onClick={() => handleSelectProduct(product)}
-                className="p-3 bg-gray-700 rounded-md hover:bg-blue-600 cursor-pointer transition flex justify-between items-center"
-              >
-                <p className="font-semibold flex-1">{product.displayName}</p>
-                <p className="text-sm text-green-400 ml-4">
-                  From ৳{product.vendors[0].price.toLocaleString()}
-                </p>
-              </div>
-            ))}
-          </div>
-        </>
-      );
-    }
-
-    if (step === 2) {
-      return (
-        <>
-          <div className="flex items-center mb-4">
-            <button onClick={handleBack} className="mr-4 text-blue-400 hover:underline">
-              ← Back to Products
+  const renderOfferSelection = () => (
+    <>
+      <div className="flex items-center mb-4">
+        <button onClick={handleBack} className="mr-4 text-blue-400 hover:underline">
+          ← Back
+        </button>
+        <h3 className="text-lg font-semibold truncate">{selectedProduct.name}</h3>
+      </div>
+      <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+        {isLoadingOffers && <div className="flex flex-col items-center p-8"><LoadingSpinner /><p className="mt-4">Searching local retailers for the best price...</p></div>}
+        {error && <p className="text-red-400">Error: {error}</p>}
+        {!isLoadingOffers && liveOffers.length === 0 && <p>No live offers found for this product from our retailers.</p>}
+        
+        {liveOffers.map((offer, idx) => (
+          <div key={idx} className="p-3 bg-gray-700 rounded-md flex justify-between items-center">
+            <div>
+              <p className="font-semibold text-blue-300">{offer.vendor}</p>
+              <p className="text-green-400 text-lg">৳{offer.price.toLocaleString()}</p>
+              <p className={`text-sm ${offer.stock === 'In Stock' ? 'text-green-500' : 'text-red-500'}`}>{offer.stock}</p>
+            </div>
+            <button
+              onClick={() => onSelectPart({ ...offer, ...selectedProduct })} // Combine static data with live offer
+              className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-500"
+              disabled={offer.stock !== 'In Stock'}
+            >
+              {offer.stock === 'In Stock' ? 'Add to Build' : 'Out of Stock'}
             </button>
-            <h3 className="text-lg font-semibold truncate" title={selectedProduct.displayName}>{selectedProduct.displayName}</h3>
           </div>
-          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-            <p className="text-md font-bold mb-2">Available Offers:</p>
-            {selectedProduct.vendors.map((part, idx) => (
-              <div key={idx} className="p-3 bg-gray-700 rounded-md flex justify-between items-center">
-                <div>
-                  <p className="font-semibold text-blue-300">{part.vendor}</p>
-                  <p className="text-green-400 text-lg">৳{part.price.toLocaleString()}</p>
-                  <p className={`text-sm ${part.stock === 'In Stock' ? 'text-green-500' : 'text-red-500'}`}>{part.stock}</p>
-                </div>
-                <button
-                  onClick={() => onSelectPart(part)}
-                  className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-500"
-                  disabled={part.stock !== 'In Stock'}
-                >
-                  {part.stock === 'In Stock' ? 'Add to Build' : 'Out of Stock'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </>
-      );
-    }
-  };
+        ))}
+      </div>
+    </>
+  );
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
@@ -145,7 +130,7 @@ export default function PartPicker({ category, onClose, onSelectPart }) {
           </h2>
           <button onClick={onClose} className="text-2xl hover:text-red-500">×</button>
         </div>
-        {renderContent()}
+        {step === 1 ? renderProductSelection() : renderOfferSelection()}
       </div>
     </div>
   );
