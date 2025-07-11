@@ -11,20 +11,24 @@ const retailerSelectors = {
     ultratech: { product: '.product-thumb', name: '.caption h4 a', price: '.price-new, .price', stock: '.stock-status' },
 };
 
-// New, more robust normalization function
+// The new, smarter normalization engine.
+// It preserves model numbers and key identifiers.
 function getNormalizedKey(name) {
     return name.toLowerCase()
-        .replace(/amd|intel|core|ryzen|series/g, '')
-        .replace(/\s*\(.*\)\s*/g, '') // Remove text in parentheses
-        .replace(/[^\w\d]/g, '') // Remove non-alphanumeric chars
+        .replace(/\(.*\)|\[.*\]/g, '') // Remove anything in parentheses or brackets
+        .replace(/amd|intel|core|ryzen|series|gaming|desktop|processor|graphics|card|ddr[45]|pcie/g, '')
+        .replace(/geforce|rtx|gtx|radeon|vega/g, '')
+        .replace(/\b\d+-core\b/g, '') // remove "6-core" etc.
+        .replace(/mhz|ghz|gb|tb|watt|w/g, '')
+        .replace(/[^\w\d]/g, '') // Remove all non-alphanumeric characters
         .trim();
 }
 
-async function scrapeCategory(categoryKey) {
+async function scrapeAllOffersForCategory(categoryKey) {
     const category = CATEGORIES[categoryKey];
     if (!category) return [];
 
-    const allProducts = [];
+    const allOffers = [];
     const promises = Object.keys(RETAILERS).map(async (retailerKey) => {
         const urlPath = category.urls[retailerKey];
         if (!urlPath) return;
@@ -33,7 +37,7 @@ async function scrapeCategory(categoryKey) {
         const selectors = retailerSelectors[retailerKey];
 
         try {
-            const { data } = await axios.get(url, { headers: HEADERS, timeout: 15000 });
+            const { data } = await axios.get(url, { headers: HEADERS, timeout: 20000 });
             const $ = cheerio.load(data);
 
             $(selectors.product).each((_, el) => {
@@ -41,19 +45,12 @@ async function scrapeCategory(categoryKey) {
                 const priceText = $(el).find(selectors.price).first().text().trim();
                 const price = parseInt(priceText.replace(/[^0-9]/g, ''), 10);
                 
-                if (name && price > 0) {
+                if (name && price > 100) { // Filter out accessories or invalid prices
                     const productUrl = new URL($(el).find(selectors.name).attr('href'), RETAILERS[retailerKey].urlBase).href;
                     const stockText = $(el).find(selectors.stock).text().trim() || 'In Stock';
                     const stock = /out of stock/i.test(stockText) ? 'Out of Stock' : 'In Stock';
                     
-                    allProducts.push({
-                        name,
-                        price,
-                        stock,
-                        url: productUrl,
-                        vendor: RETAILERS[retailerKey].name,
-                        category: categoryKey,
-                    });
+                    allOffers.push({ name, price, stock, url: productUrl, vendor: RETAILERS[retailerKey].name, category: categoryKey });
                 }
             });
         } catch (err) {
@@ -62,7 +59,7 @@ async function scrapeCategory(categoryKey) {
     });
 
     await Promise.all(promises);
-    return allProducts;
+    return allOffers;
 }
 
 export default async function handler(req, res) {
@@ -73,28 +70,39 @@ export default async function handler(req, res) {
     }
 
     try {
-        const liveProducts = await scrapeCategory(category);
+        // 1. Get all raw offers from every retailer
+        const allLiveOffers = await scrapeAllOffersForCategory(category);
 
-        // Group products by a normalized name to create a unique product list
-        const productGroups = new Map();
-        liveProducts.forEach(p => {
-            const key = getNormalizedKey(p.name);
-            if (!productGroups.has(key)) {
-                productGroups.set(key, {
-                    displayName: p.name, // Use the name of the first one we see as the display name
-                    offers: [],
+        // 2. Group these offers into canonical products using the smart normalization key
+        const productCatalog = new Map();
+        allLiveOffers.forEach(offer => {
+            const key = getNormalizedKey(offer.name);
+            if (!key) return; // Skip if normalization results in an empty key
+
+            if (!productCatalog.has(key)) {
+                productCatalog.set(key, {
+                    // Use the shortest name as the display name, it's often the cleanest
+                    displayName: offer.name, 
+                    allOffers: [],
                 });
             }
-            productGroups.get(key).offers.push(p);
+            
+            const product = productCatalog.get(key);
+            // Use the shortest, cleanest name for the group
+            if (offer.name.length < product.displayName.length) {
+                product.displayName = offer.name;
+            }
+            product.allOffers.push(offer);
         });
 
-        // Sort offers within each group by price
-        productGroups.forEach(group => group.offers.sort((a, b) => a.price - b.price));
+        // 3. Sort offers within each product by price
+        productCatalog.forEach(product => product.allOffers.sort((a, b) => a.price - b.price));
 
-        const uniqueProductList = Array.from(productGroups.values());
+        // 4. Convert map to array and send to frontend
+        const result = Array.from(productCatalog.values());
 
-        res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600'); // 5 min cache
-        return res.status(200).json({ success: true, data: uniqueProductList });
+        res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
+        return res.status(200).json({ success: true, data: result });
 
     } catch (err) {
         console.error(`[API] Handler failed for category ${category}:`, err);
