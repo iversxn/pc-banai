@@ -7,62 +7,11 @@ import CompatibilityAlert from './components/CompatibilityAlert';
 import { checkCompatibility } from './utils/checkCompatibility';
 import { CATEGORIES } from './data/componentConfig';
 import PartPicker from './components/PartPicker';
-import LoadingSpinner from './components/LoadingSpinner'; // Import the spinner
 
 const allCategoryKeys = Object.keys(CATEGORIES);
 const multiSelectCategories = ['RAM', 'Storage', 'Case Fan', 'Monitor'];
 
-// Polling hook for fetching data
-const usePartData = () => {
-  const [allParts, setAllParts] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [statusMessage, setStatusMessage] = useState('Connecting to retailers...');
-
-  useEffect(() => {
-    let attempts = 0;
-    const maxAttempts = 10; // Try up to 10 times (e.g., 10 * 4s = 40s timeout)
-    const interval = 4000; // 4 seconds
-
-    const fetchData = async () => {
-      attempts++;
-      try {
-        const res = await fetch('/api/retailers');
-        const json = await res.json();
-
-        if (res.status === 200 && json.success) {
-          setAllParts(json.data);
-          setIsLoading(false);
-          setError(null);
-          return; // Success, stop polling
-        }
-
-        if (res.status === 202 || (json.success === false && json.message.includes('updating'))) {
-          setStatusMessage('Live data is being updated, this may take a moment...');
-          if (attempts < maxAttempts) {
-            setTimeout(fetchData, interval); // Retry after interval
-          } else {
-            setError('The server is taking too long to respond. Please try refreshing the page.');
-            setIsLoading(false);
-          }
-        } else {
-           throw new Error(json.message || 'An unknown error occurred.');
-        }
-      } catch (err) {
-        setError(`Failed to fetch parts data: ${err.message}`);
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  return { allParts, isLoading, error, statusMessage };
-};
-
-
 export default function App() {
-  const { allParts, isLoading, error, statusMessage } = usePartData();
   const [selectedParts, setSelectedParts] = useState({});
   const [compatibilityIssues, setCompatibilityIssues] = useState([]);
 
@@ -90,7 +39,7 @@ export default function App() {
     } else {
       setSelectedParts((prev) => ({ ...prev, [category]: part }));
     }
-    setIsPickerOpen(false); // Close picker after selection
+    setIsPickerOpen(false);
   };
 
   const handlePartRemove = (category, index = -1) => {
@@ -128,37 +77,6 @@ export default function App() {
     />
   );
 
-  if (isLoading) {
-    return (
-        <Layout>
-            <Header />
-            <div className="text-center p-10 flex flex-col items-center justify-center">
-                <LoadingSpinner />
-                <p className="mt-4 text-lg text-gray-300">{statusMessage}</p>
-            </div>
-        </Layout>
-    );
-  }
-
-  if (error) {
-      return (
-        <Layout>
-            <Header />
-            <div className="text-center p-10">
-                <p className="text-2xl text-red-500">An Error Occurred</p>
-                <p className="mt-4 text-lg text-gray-300">{error}</p>
-                <button
-                    onClick={() => window.location.reload()}
-                    className="mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-                >
-                    Refresh Page
-                </button>
-            </div>
-        </Layout>
-      );
-  }
-
-
   return (
     <>
       <Layout>
@@ -167,7 +85,7 @@ export default function App() {
             <main className="lg:col-span-2">
                 {content}
             </main>
-            <aside>
+            <aside className="lg:col-span-1 sticky top-6 h-fit">
                 {summary}
             </aside>
         </div>
@@ -176,7 +94,6 @@ export default function App() {
       {isPickerOpen && (
         <PartPicker
           category={pickerCategory}
-          allParts={allParts}
           onClose={() => setIsPickerOpen(false)}
           onSelectPart={handlePartSelect}
         />
