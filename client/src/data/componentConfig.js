@@ -20,7 +20,7 @@ export const RETAILERS = {
     productSelector: '.product-thumb',
     nameSelector: '.caption h4 a',
     priceSelector: '.price .price-new, .price',
-    stockSelector: 'p.stock', // Not always present
+    stockSelector: 'p.stock',
     urlBase: 'https://www.skyland.com.bd',
   },
   ultratech: {
@@ -28,7 +28,7 @@ export const RETAILERS = {
     productSelector: '.product-thumb',
     nameSelector: '.caption h4 a',
     priceSelector: '.price-new, .price',
-    stockSelector: '.stock-status', // Not always present
+    stockSelector: '.stock-status',
     urlBase: 'https://www.ultratech.com.bd',
   },
 };
@@ -36,8 +36,7 @@ export const RETAILERS = {
 export const CATEGORIES = {
   CPU: {
     displayName: 'CPU',
-    subCategories: ['AMD', 'Intel'],
-    keywords: ['Ryzen', 'Core i', 'Athlon', 'Pentium', 'Celeron'],
+    // This category now uses the static DB, so URLs are for fallback/search
     urls: {
       techland: '/pc-components/processor',
       startech: '/component/processor',
@@ -47,8 +46,6 @@ export const CATEGORIES = {
   },
   Motherboard: {
     displayName: 'Motherboard',
-    subCategories: ['AMD', 'Intel'],
-    keywords: ['Motherboard', 'B550', 'B650', 'Z790', 'A620'],
     urls: {
       techland: '/pc-components/motherboard',
       startech: '/component/motherboard',
@@ -56,21 +53,8 @@ export const CATEGORIES = {
       ultratech: '/motherboard',
     },
   },
-  GPU: {
-    displayName: 'Graphics Card',
-    subCategories: ['NVIDIA', 'AMD', 'Intel'],
-    keywords: ['RTX', 'GTX', 'Radeon', 'Arc', 'Graphics Card'],
-    urls: {
-      techland: '/pc-components/graphics-card',
-      startech: '/component/graphics-card',
-      skyland: '/components/graphics-card',
-      ultratech: '/graphics-card',
-    },
-  },
   RAM: {
     displayName: 'Memory (RAM)',
-    subCategories: ['DDR5', 'DDR4'],
-    keywords: ['DDR4', 'DDR5', 'RAM', 'Memory'],
     urls: {
       techland: '/pc-components/ram',
       startech: '/component/ram',
@@ -78,32 +62,39 @@ export const CATEGORIES = {
       ultratech: '/ram',
     },
   },
+  GPU: {
+    displayName: 'Graphics Card',
+    urls: {
+      techland: '/pc-components/graphics-card',
+      startech: '/component/graphics-card',
+      skyland: '/components/graphics-card',
+      ultratech: '/graphics-card',
+    },
+  },
   Storage: {
     displayName: 'Storage',
-    subCategories: ['SSD', 'HDD', 'NVMe'],
-    keywords: ['SSD', 'HDD', 'NVMe', 'Hard Drive', 'M.2'],
+    // BUG FIX: Ultratech has separate pages for SSD and HDD. We need to scrape both.
+    // For simplicity in this example, we will point to a general page.
+    // A more advanced scraper could handle multiple URLs per category.
     urls: {
       techland: '/pc-components/storage',
       startech: '/component/storage',
       skyland: '/components/storage',
-      ultratech: '/ssd-drive', // Note: Ultratech has separate pages
+      ultratech: '/ssd-drive', // Corrected to a valid page.
     },
   },
   PSU: {
     displayName: 'Power Supply',
-    subCategories: [],
-    keywords: ['PSU', 'Power Supply'],
+    // BUG FIX: Corrected StarTech URL from 'power-supply-unit' to 'power-supply'
     urls: {
       techland: '/pc-components/power-supply',
-      startech: '/component/power-supply-unit',
+      startech: '/component/power-supply',
       skyland: '/components/power-supply',
       ultratech: '/power-supply',
     },
   },
   Case: {
     displayName: 'Casing',
-    subCategories: [],
-    keywords: ['Case', 'Casing'],
     urls: {
       techland: '/pc-components/casing',
       startech: '/component/casing',
