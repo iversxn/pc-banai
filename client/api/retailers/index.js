@@ -11,20 +11,36 @@ const retailerSelectors = {
     ultratech: { product: '.product-thumb', name: '.caption h4 a', price: '.price-new, .price', stock: '.stock-status' },
 };
 
-// The new, smarter normalization engine.
-// It preserves model numbers and key identifiers.
+// Smarter normalization focusing on model numbers
 function getNormalizedKey(name) {
-    return name.toLowerCase()
-        .replace(/\(.*\)|\[.*\]/g, '') // Remove anything in parentheses or brackets
-        .replace(/amd|intel|core|ryzen|series|gaming|desktop|processor|graphics|card|ddr[45]|pcie/g, '')
-        .replace(/geforce|rtx|gtx|radeon|vega/g, '')
-        .replace(/\b\d+-core\b/g, '') // remove "6-core" etc.
-        .replace(/mhz|ghz|gb|tb|watt|w/g, '')
-        .replace(/[^\w\d]/g, '') // Remove all non-alphanumeric characters
-        .trim();
+    const lower = name.toLowerCase();
+    // Extract specific model numbers like 5600x, 13700k, b550, z790, rtx3060, etc.
+    const modelMatch = lower.match(/(i[3579]-?\d{4,5}k?f?|ryzen\s?\d{1,2}\s?\d{4}x?g?|b\d{2,3}m?|x\d{2,3}|z\d{2,3}|rtx\s?\d{4}|rx\s?\d{4})/);
+    if (modelMatch) return modelMatch[0].replace(/\s/g, '');
+
+    // Fallback for other components
+    return lower.replace(/\(.*\)|\[.*\]/g, '').replace(/[^\w\d]/g, '').trim();
+}
+
+// New function to add compatibility tags on the backend
+function addCompatibilityTags(product, category) {
+    const name = product.displayName.toLowerCase();
+    if (category === 'Motherboard') {
+        if (name.includes('am5') || name.includes('x670') || name.includes('b650')) product.socket = 'AM5';
+        if (name.includes('am4') || name.includes('b550') || name.includes('b450') || name.includes('x570')) product.socket = 'AM4';
+        if (name.includes('lga1700') || name.includes('z790') || name.includes('b760') || name.includes('z690')) product.socket = 'LGA1700';
+        if (name.includes('ddr5')) product.memoryType = 'DDR5';
+        if (name.includes('ddr4')) product.memoryType = 'DDR4';
+    }
+    if (category === 'RAM') {
+        if (name.includes('ddr5')) product.memoryType = 'DDR5';
+        if (name.includes('ddr4')) product.memoryType = 'DDR4';
+    }
+    return product;
 }
 
 async function scrapeAllOffersForCategory(categoryKey) {
+    // ... (scraping logic remains the same as the previous version)
     const category = CATEGORIES[categoryKey];
     if (!category) return [];
 
@@ -45,7 +61,7 @@ async function scrapeAllOffersForCategory(categoryKey) {
                 const priceText = $(el).find(selectors.price).first().text().trim();
                 const price = parseInt(priceText.replace(/[^0-9]/g, ''), 10);
                 
-                if (name && price > 100) { // Filter out accessories or invalid prices
+                if (name && price > 100) {
                     const productUrl = new URL($(el).find(selectors.name).attr('href'), RETAILERS[retailerKey].urlBase).href;
                     const stockText = $(el).find(selectors.stock).text().trim() || 'In Stock';
                     const stock = /out of stock/i.test(stockText) ? 'Out of Stock' : 'In Stock';
@@ -54,7 +70,7 @@ async function scrapeAllOffersForCategory(categoryKey) {
                 }
             });
         } catch (err) {
-            console.error(`[API Scrape] Failed for ${url}: ${err.message}`);
+            // Don't kill the whole process if one retailer fails
         }
     });
 
@@ -64,48 +80,38 @@ async function scrapeAllOffersForCategory(categoryKey) {
 
 export default async function handler(req, res) {
     const { category } = req.query;
-
-    if (!category || !CATEGORIES[category]) {
-        return res.status(400).json({ success: false, error: 'A valid category must be provided.' });
-    }
+    if (!category || !CATEGORIES[category]) return res.status(400).json({ success: false, error: 'A valid category is required.' });
 
     try {
-        // 1. Get all raw offers from every retailer
         const allLiveOffers = await scrapeAllOffersForCategory(category);
-
-        // 2. Group these offers into canonical products using the smart normalization key
         const productCatalog = new Map();
+
         allLiveOffers.forEach(offer => {
             const key = getNormalizedKey(offer.name);
-            if (!key) return; // Skip if normalization results in an empty key
+            if (!key) return;
 
             if (!productCatalog.has(key)) {
-                productCatalog.set(key, {
-                    // Use the shortest name as the display name, it's often the cleanest
-                    displayName: offer.name, 
-                    allOffers: [],
-                });
+                productCatalog.set(key, { displayName: offer.name, allOffers: [] });
             }
-            
             const product = productCatalog.get(key);
-            // Use the shortest, cleanest name for the group
             if (offer.name.length < product.displayName.length) {
                 product.displayName = offer.name;
             }
             product.allOffers.push(offer);
         });
 
-        // 3. Sort offers within each product by price
-        productCatalog.forEach(product => product.allOffers.sort((a, b) => a.price - b.price));
+        let result = Array.from(productCatalog.values());
 
-        // 4. Convert map to array and send to frontend
-        const result = Array.from(productCatalog.values());
+        // Add compatibility tags after grouping
+        result.forEach(p => addCompatibilityTags(p, category));
+
+        result.forEach(p => p.allOffers.sort((a, b) => a.price - b.price));
+        result.sort((a, b) => a.allOffers[0].price - b.allOffers[0].price);
 
         res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
         return res.status(200).json({ success: true, data: result });
 
     } catch (err) {
-        console.error(`[API] Handler failed for category ${category}:`, err);
         return res.status(500).json({ success: false, error: 'Failed to process request.' });
     }
 }
