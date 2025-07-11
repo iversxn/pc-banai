@@ -8,47 +8,41 @@ export default function PartPicker({ category, selectedParts, onClose, onSelectP
   const [series, setSeries] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
-  const [liveProductList, setLiveProductList] = useState([]);
+  const [productCatalog, setProductCatalog] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const categoryConfig = CATEGORIES[category];
   const hasGuidedFlow = !!categoryConfig.brands;
 
+  // This useEffect now makes ONE API call to get the entire, pre-grouped catalog.
   useEffect(() => {
-    const fetchLiveProducts = async () => {
+    const fetchProductCatalog = async () => {
       setIsLoading(true);
       setError(null);
       try {
         const res = await fetch(`/api/retailers?category=${category}`);
         const json = await res.json();
         if (!json.success) throw new Error(json.error || 'API request failed');
-        setLiveProductList(json.data);
+        // Sort the entire catalog by the price of its cheapest offer
+        const sortedCatalog = json.data.sort((a, b) => a.allOffers[0].price - b.allOffers[0].price);
+        setProductCatalog(sortedCatalog);
       } catch (err) {
         setError(err.message);
       } finally {
         setIsLoading(false);
       }
     };
-    fetchLiveProducts();
+    fetchProductCatalog();
   }, [category]);
 
-  const filteredProductList = useMemo(() => {
-    if (!series) {
-        const { CPU, Motherboard } = selectedParts;
-        if (category === 'Motherboard' && CPU?.socket) {
-            return liveProductList.filter(p => p.displayName.toLowerCase().includes(CPU.socket.toLowerCase()));
-        }
-        if (category === 'RAM' && (CPU?.memoryType || Motherboard?.memoryType)) {
-            const requiredType = (Motherboard?.memoryType || CPU?.memoryType).toString().toLowerCase();
-            return liveProductList.filter(p => p.displayName.toLowerCase().includes(requiredType));
-        }
-        return liveProductList;
-    }
-    return liveProductList.filter(p => 
+  // This memo filters the catalog based on the user's choices in the wizard.
+  const filteredCatalog = useMemo(() => {
+    if (!series) return productCatalog;
+    return productCatalog.filter(p => 
       series.keywords.some(kw => p.displayName.toLowerCase().includes(kw))
     );
-  }, [series, liveProductList, category, selectedParts]);
+  }, [series, productCatalog]);
 
   const handleSelectOffer = (offer) => {
     const compatibilityTags = series ? { socket: series.socket, memoryType: series.memoryType } : {};
@@ -67,54 +61,56 @@ export default function PartPicker({ category, selectedParts, onClose, onSelectP
   );
 
   const renderStep = () => {
-    if (isLoading) return <div className="min-h-[300px] flex flex-col justify-center items-center"><LoadingSpinner /><p className="mt-4">Sourcing all available {categoryConfig.displayName}...</p></div>;
-    if (error) return <p className="text-red-400">Error: {error}</p>;
+    if (isLoading) return <div className="min-h-[400px] flex flex-col justify-center items-center"><LoadingSpinner /><p className="mt-4 text-lg">Building live catalog from local retailers...</p></div>;
+    if (error) return <p className="text-red-400 p-4">Error: {error}</p>;
+    if (productCatalog.length === 0) return <p className="p-4">No products found for this category at any of our retailers.</p>
 
+    // Guided Flow for CPU
     if (hasGuidedFlow) {
-      if (step === 1) {
+      if (step === 1) { // Brand Selection
         return (
           <div>
-            <h3 className="text-lg font-semibold mb-4">Choose a Brand</h3>
+            <h3 className="text-lg font-semibold mb-4">1. Choose a Brand</h3>
             {Object.keys(categoryConfig.brands).map(b => (
               <div key={b} onClick={() => { setBrand(b); setStep(2); }} className="p-4 bg-gray-700 rounded-md hover:bg-blue-600 cursor-pointer mb-2">{b}</div>
             ))}
           </div>
         );
       }
-      if (step === 2) {
+      if (step === 2) { // Series Selection
         return (
           <div>
             {renderBackButton(() => setStep(1))}
-            <h3 className="text-lg font-semibold mb-4">Choose a Series for {brand}</h3>
+            <h3 className="text-lg font-semibold mb-4">2. Choose a Series for {brand}</h3>
             {categoryConfig.brands[brand].series.map(s => (
               <div key={s.name} onClick={() => { setSeries(s); setStep(3); }} className="p-4 bg-gray-700 rounded-md hover:bg-blue-600 cursor-pointer mb-2">{s.name}</div>
             ))}
           </div>
         );
       }
-      if (step === 3) {
+      if (step === 3) { // Product Selection
         return (
           <div>
             {renderBackButton(() => setStep(2))}
-            <h3 className="text-lg font-semibold mb-4">Choose a Product ({filteredProductList.length} found)</h3>
+            <h3 className="text-lg font-semibold mb-4">3. Choose a Product ({filteredCatalog.length} found)</h3>
             <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
-              {filteredProductList.length > 0 ? filteredProductList.map((p, i) => (
-                <div key={i} onClick={() => { setSelectedProduct(p); setStep(4); }} className="p-3 bg-gray-700 rounded-md hover:bg-blue-600 cursor-pointer flex justify-between">
-                  <span>{p.displayName}</span>
-                  <span className="text-green-400">From ৳{p.offers[0].price.toLocaleString()}</span>
+              {filteredCatalog.map((p, i) => (
+                <div key={i} onClick={() => { setSelectedProduct(p); setStep(4); }} className="p-3 bg-gray-700 rounded-md hover:bg-blue-600 cursor-pointer flex justify-between items-center">
+                  <span className="flex-1">{p.displayName}</span>
+                  <span className="text-green-400 ml-4">From ৳{p.allOffers[0].price.toLocaleString()}</span>
                 </div>
-              )) : <p className="text-yellow-400">No products found for this series. Retailers may be out of stock.</p>}
+              ))}
             </div>
           </div>
         );
       }
-      if (step === 4) {
+      if (step === 4) { // Offer Selection
         return (
           <div>
             {renderBackButton(() => setStep(3))}
             <h3 className="text-lg font-semibold mb-4">{selectedProduct.displayName}</h3>
             <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-              {selectedProduct.offers.map((offer, i) => (
+              {selectedProduct.allOffers.map((offer, i) => (
                 <div key={i} className="p-3 bg-gray-700 rounded-md flex justify-between items-center">
                   <div>
                     <p className="font-semibold text-blue-300">{offer.vendor}</p>
@@ -130,16 +126,17 @@ export default function PartPicker({ category, selectedParts, onClose, onSelectP
       }
     }
 
+    // Default Flow for other components (e.g., GPU, PSU)
     return (
       <div>
-        <h3 className="text-lg font-semibold mb-4">Choose a Product ({filteredProductList.length} found)</h3>
+        <h3 className="text-lg font-semibold mb-4">Choose a Product ({productCatalog.length} found)</h3>
         <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
-          {filteredProductList.length > 0 ? filteredProductList.map((p, i) => (
-            <div key={i} onClick={() => handleSelectOffer(p.offers[0])} className="p-3 bg-gray-700 rounded-md hover:bg-blue-600 cursor-pointer flex justify-between">
-              <span>{p.displayName}</span>
-              <span className="text-green-400">৳{p.offers[0].price.toLocaleString()}</span>
+          {productCatalog.map((p, i) => (
+            <div key={i} onClick={() => { setSelectedProduct(p); setStep(2); }} className="p-3 bg-gray-700 rounded-md hover:bg-blue-600 cursor-pointer flex justify-between items-center">
+              <span className="flex-1">{p.displayName}</span>
+              <span className="text-green-400 ml-4">From ৳{p.allOffers[0].price.toLocaleString()}</span>
             </div>
-          )) : <p className="text-yellow-400">No products found for this category.</p>}
+          ))}
         </div>
       </div>
     );
@@ -153,4 +150,6 @@ export default function PartPicker({ category, selectedParts, onClose, onSelectP
       </div>
     </div>
   );
-}
+}```
+
+This comprehensive overhaul directly addresses all your feedback. It provides a robust, scalable, and truly user-friendly foundation that can genuinely grow into the "PCPartPicker for Bangladesh" you envision.
