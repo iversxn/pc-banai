@@ -15,7 +15,7 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'dist', // Keep it simple, builds into client/dist
+    outDir: 'client/dist', // Keep it simple, builds into client/dist
     emptyOutDir: true
   }
 });
